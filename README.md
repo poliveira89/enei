@@ -220,12 +220,6 @@ You probably noticed that every URL has a `(.:format)` in the end. This means th
 
 If you access `localhost:3000/users.json` you can see that your controllers already respond to JSON format but it isn't the default. To make it default change the `routes.rb` file to:
 
-```ruby
-resources :users, defaults: { format: 'json' }
-```
-
-And now you can use the route without extension and get JSON objects!
-
 ## Adding tasks
 
 Let's add our second model, called `Task` to our application:
@@ -326,34 +320,6 @@ To create a new task associated to that user:
 ```
 
 You can learn more about Active Record associations [here](http://guides.rubyonrails.org/association_basics.html).
-
-## Namespacing the API
-
-Our mobile application will only use the JSON routes to communicate. Usually you don't want to expose the same actions for frontend or backoffice HTML pages and the JSON API. That's where namespacing can help you out.
-
-Change the routes file to use `v1` as the namespace for the API routes, using JSON as the default format:
-
-```ruby
-  namespace 'v1', defaults: { format: 'json' } do
-    resources :tasks
-    resources :users
-  end
-```
-
-You can keep the other `resources` calls out of the namespace to use them like a rudimentary backoffice.
-
-Because we namespaced the resources we also have to namespace the controllers. We must create the 'v1' directory inside the controllers and make a copy of our controllers inside of it. The class name of the controllers should also be changed to have `V1::` before. We end up with `V1::TasksController` and `V1::UsersController`.
-
-Edit those controllers and delete everything that has to do with rendering stuff for HTML (because the API doesn't need it). We can also delete the edit and new methods because the "form" for creation will be on the mobile side. Since we can't check the "details" of each task we can also delete the show method.
-
-We should also apply these changes in the routes:
-
-```ruby
-  namespace 'v1', defaults: { format: 'json' } do
-    resources :tasks, only: [:index, :create, :update, :destroy]
-    resources :users, only: [:create]
-  end
-```
 
 ## User authentication
 
