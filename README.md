@@ -127,7 +127,7 @@ Fire up your WEBrick again and if you go to your localhost address you should se
 
 Rails always tries to use the `<method>.html.erb` on the correct directory if you don't tell otherwise. When we generated the controller the command also generated this file for you.
 
-The `.erb` extension is because Rails uses **Embedded RuBy** as the default templating system for HTML output. We won't be playing much with ERB since the application will use JSON to comunicate with the mobile app.
+The `.erb` extension is because Rails uses **Embedded RuBy** as the default templating system for HTML output.
 
 ## REST Resources
 
@@ -139,16 +139,14 @@ It is an architecture style for designing networked applications. The idea is th
 
 RESTful applications use HTTP requests to post data (create and/or update), read data (e.g., make queries), and delete data. Thus, REST uses HTTP verbs (mainly: GET, POST, PUT and DELETE) for all four CRUD operations.
 
-Rails provides a resources method which can be used to declare a standard REST resource. Here's how config/routes.rb will look like.
-
 ## Scaffolding of resources
 
 Rails scaffolding is a quick way to generate some of the major pieces of an application. If you want to create the models, views, and controllers for a new resource in a single operation, scaffolding is the tool for the job.
 
-Let's start and create a new resource that we call `User` and that will represent the users of our application. For now the users have only one field for the full name:
+Let's start and create a new resource that we call `User` and that will represent the users of our application. For now the users have only two fields for the full name:
 
 ```
-rails g scaffold User name
+rails g scaffold User first_name last_name
 ```
 
 A lot of things were created with a single command!
@@ -167,7 +165,8 @@ You should have a file with timestamp in `app/db/migrate` folder and the content
 class CreateUsers < ActiveRecord::Migration
   def change
     create_table :users do |t|
-      t.string :name
+      t.string :first_name
+      t.string :last_name
 
       t.timestamps
     end
@@ -217,8 +216,6 @@ Note that we have `users#new` and `users#edit` that aren't mentioned on the basi
 If we fire up the WEBrick again we'll see a lot of things working right now. Go to `localhost:3000/users` and you can see that CRUD operations for users are working!
 
 You probably noticed that every URL has a `(.:format)` in the end. This means that it accepts .html, .json, .xml or whatever format you define. By default you can ommit the format and Rails will use the one that it considers the default format (in this case HTML is the default format).
-
-If you access `localhost:3000/users.json` you can see that your controllers already respond to JSON format but it isn't the default. To make it default change the `routes.rb` file to:
 
 ## Adding tasks
 
@@ -328,7 +325,7 @@ User authentication is often a requisite on web applications. For a faster and e
 To install it we must add the gem dependency on our `Gemfile`. Just add this line:
 
 ```ruby
-gem 'devise', '3.0.0' # don't install the most recent one
+gem 'devise'
 ```
 
 Then you must run the `bundle install` command inside the project directory. This command will check for new gem dependencies that you added on `Gemfile` and install them.
@@ -345,159 +342,67 @@ And then another one to generate some code on our user model:
 rails g devise User
 ```
 
-This last command will also create a new migration to add some missing fields to our user (`email`, `encrypted_password`, etc.). You should go ahead and change that migration because our authentication will be done with an authentication token rather than sessions, like in normal web applications.
-
-Uncomment this lines:
-
-```
-# t.string :authentication_token
-# add_index :users, :authentication_token, :unique => true
-```
-
-> **Note**: by now you should be aware that comments in ruby are done with the '#' character.
-
+This last command will also create a new migration to add some missing fields to our user (`email`, `encrypted_password`, etc.).
 Run the devise user migration:
 
 ```
 rake db:migrate
 ```
 
-Edit `config/initializers/devise.rb` and also uncomment the line with the `config.token_authentication_key` configuration. It should be like this:
-
-```
-config.token_authentication_key = :authentication_token
-```
-
-On our User model add `:token_authenticatable` to the list of devise modules already listed and add a method to change the authentication_token every time the user is saved. Your user model should be something like this:
+Your user model should be something like this:
 
 ```ruby
 class User < ActiveRecord::Base
   has_many :tasks, dependent: :destroy
 
-  before_save :ensure_authentication_token
-
   # Include default devise modules. Others available are:
-  # :token_authenticatable, :confirmable,
-  # :lockable, :timeoutable and :omniauthable
+  # :confirmable, :lockable, :timeoutable and :omniauthable
   devise :database_authenticatable, :registerable,
-         :recoverable, :rememberable, :trackable, :validatable, :token_authenticatable
+         :recoverable, :rememberable, :trackable, :validatable
 end
 ```
 
-#### Custom sessions and registrations
+#### Sessions and registrations
 
-This step is not trivial, so just get the code below for your session and registration handling. The tutor will briefly describe what's going on on each file.
+On your `routes.rb` file you can see that devise added a `devise_for :users` line. This will map some routes for login, registration, password forgot, etc.
 
-For sessions handling create `sessions_controller.rb` under `app/controllers/v1` with this content:
-
-```ruby
-class V1::SessionsController < ::Devise::SessionsController
-  def create
-    @user = User.where(user_params).first
-
-    if @user.valid_password?(params[:user][:password])
-      @user.authentication_token = ''
-      @user.save
-      render json: @user.as_json.merge(authentication_token: @user.authentication_token)
-    else
-      render json: 'Unauthorized', status: :unauthorized
-    end
-  end
-
-  def destroy
-    current_v1_user.authentication_token = nil
-    super
-  end
-
-  protected
-
-  def verified_request?
-    request.content_type == 'application/json' || super
-  end
-
-  def user_params
-    params.require(:user).permit(:name, :email)
-  end
-end
-```
-
-For registration handling create `registrations_controller.rb` under `app/controllers/v1` with this content:
+If our tasks controller was the one needing authentication we just have to add this line:
 
 ```ruby
-class V1::RegistrationsController < Devise::RegistrationsController
-  prepend_before_filter :require_no_authentication, only: [:create]
-
-  def create
-    @user = User.new(user_params)
-
-    if @user.save
-      render json: @user.as_json.merge(authentication_token: @user.authentication_token), status: :created
-    else
-      warden.custom_failure!
-      render json: @user.errors, status: :unprocessable_entity
-    end
-  end
-
-  private
-
-  def user_params
-    params.require(:user).permit(:name, :email, :password)
-  end
-end
+before_filter :authenticate_user!
 ```
 
-On your `routes.rb` file you can see that devise added a `devise_for :users` but we also need to insert it inside the namespace and give it our custom sessions controller:
+If you now try to check `/tasks` on your web browser you'll see that you will be redirect to `/users/sign_in` where you can sign in or register a new user.
+
+
+## Easy debugging with pry
+
+One of the tools that will be *very useful* for a lot of tasks is Pry. Pry is a powerful alternative to the standard IRB shell for Ruby. It features syntax highlighting, a flexible plugin architecture, runtime invocation and source and documentation browsing.
+
+To enable Pry you just have to add it's gem. Add this lines to your `Gemfile`:
 
 ```ruby
-namespace 'v1', defaults: { format: 'json' } do
-  devise_for :users, controllers: { sessions: 'v1/sessions' }
-  resources :tasks, only: [:index, :create, :update, :destroy]
-  resources :users, only: [:create]
-end
+gem 'pry'
+gem 'pry-rails'
 ```
 
-Our tasks controller will be the one needing authentication. For that we just have to add this line:
+Then run `bundle install`. Now when you do a `rails console` you'll get all the benefits of having Pry on your project. Go ahead and check how neat the syntax highlight is.
+
+Also check the following commands:
 
 ```ruby
-before_filter :authenticate_v1_user!
+show-models
+show-model User
+show-routes
 ```
 
-Last thing we want to do is change our `application_controller.rb` and change the `protect_from_forgery` line. Read the comment on that controller and you should know what to do:
+Pry has many tricks and neat features that you can check later on their homepage, but we will focus on debugging with pry, which is a very handy one.
 
-```ruby
-protect_from_forgery with: :null_session
-```
+Usually when you need to debug a Rails application, most of the times you will use `print` (or `puts`) to check what's going on. You refresh and check the console over and over again. It's the easiest way of doing it and sometimes that's enough.
 
-## Final tweaks
+Sometimes that's not enough and you need a really debugging tool. That's where Pry can help a lot. Inside your index method on `TasksController` enter `binding.pry` and go to `/tasks` on your browser. You see that nothing happens and if you check your terminal you see that now you have your execution pending with a command line interface.
 
-We now have our application almost fully functional and ready to respond to our mobile app but you may have noticed that every user can get every task. We should only retrieve the tasks for the authenticated user.
-For this, you need to change your TasksController in order to respond according to the user.
-
-By having the `before_filter :authenticate_v1_user!` callback in the top of your controller, you now have access to the `current_v1_user` that is exactly what you need to this job.
-
-So, change your `tasks#index` to:
-
-```ruby
-def index
-  @tasks = current_v1_user.tasks
-  render json: @tasks
-end
-```
-You should also fix the `create` method so the current user gets associated to the class. This is done by changing your `tasks#create`:
-
-```ruby
-def create
-  @task = current_v1_user.tasks.create(task_params)
-
-  if @task
-    render json: @task
-  else
-    render json: @task.errors, status: :unprocessable_entity
-  end
-end
-```
-
-And thats it, your API is ready to be used by your mobile app, that you'll be programming pretty soon :)
+When you enter a `binding.pry` inside your code you're making it stop there (it's like adding a breakpoint) and you can actually check variables and run any code you want in that context. You can then `continue` or `step` etc. like any other debugger. Check Pry documentation for more!
 
 ## Learn more
 
@@ -523,3 +428,6 @@ A rails gem dependent best friend.
 
 - [RVM](https://rvm.io/)
 Control your ruby version in a dot. File.
+
+- [Pry](http://pryrepl.org/)
+The Pry REPL.
